@@ -286,22 +286,15 @@ function hasdefault(c::Client, T::Type{<:AbstractEvent})
     return haskey(get(c.handlers, T, Dict()), DEFAULT_HANDLER_TAG)
 end
 
-@enum LogLevel DEBUG INFO WARN ERROR
-
-function logmsg(c::Client, level::LogLevel, msg::AbstractString; kwargs...)
-    msg = c.shards > 1 ? "[Shard $(c.shard)] $msg" : msg
-    msg = "$(now()) $msg"
-
-    if level === DEBUG
-        @debug msg kwargs...
-    elseif level === INFO
-        @info msg kwargs...
-    elseif level === WARN
-        @warn msg kwargs...
-    elseif level === ERROR
-        @error msg kwargs...
-    else
-        error("Unknown log level $level")
+macro log(c, level, msg, kwargs...)
+    file = __source__.file
+    line = __source__.line
+    quote
+        shard = $(esc(c)).shard
+        shards = $(esc(c)).shards
+        str = $(esc(msg))
+        shards > 1 && (str = "[Shard $shard/$shards] $str")
+        @logmsg $level str $(kwargs...) _file=string($(QuoteNode(file))) _line=$line
     end
 end
 
@@ -309,7 +302,7 @@ function Base.tryparse(c::Client, T::Type, data)
     return try
         T <: Vector ? eltype(T).(data) : T(data), nothing
     catch e
-        logmsg(c, ERROR, catchmsg(e))
+        @log c ERROR catchmsg(e)
         push!(c.state.errors, data)
         nothing, e
     end

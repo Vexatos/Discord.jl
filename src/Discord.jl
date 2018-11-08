@@ -1,5 +1,10 @@
 module Discord
 
+using Base: Semaphore, acquire, release
+using Base.CoreLogging
+using Base.CoreLogging: Debug, Info, Warn, Error
+using Base.Threads
+using Base.Threads: AbstractLock
 using Dates
 using Distributed
 using HTTP
@@ -14,7 +19,7 @@ const DISCORD_API = "https://discordapp.com/api"
 
 const TTLDict = Dict{DataType, Union{Period, Nothing}}
 
-function locked(f::Function, x::Threads.AbstractLock)
+function locked(f::Function, x::AbstractLock)
     lock(x)
     try f() finally unlock(x) end
 end

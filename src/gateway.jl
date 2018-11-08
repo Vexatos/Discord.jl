@@ -42,15 +42,15 @@ function Base.open(c::Client; resume::Bool=false, delay::Period=Second(7))
     # Clients can only identify once per 5 seconds.
     resume || sleep(c.shard * delay)
 
-    logmsg(c, DEBUG, "Requesting gateway URL")
+    @log c Debug "Requesting gateway URL"
     resp = HTTP.get("$DISCORD_API/v$(c.version)/gateway")
     data = JSON.parse(String(resp.body))
     url = "$(data["url"])?v=$(c.version)&encoding=json"
-    logmsg(c, DEBUG, "Connecting to gateway"; url=url)
+    @log c Debug "Connecting to gateway" url=url
     v = isdefined(c, :conn) ? c.conn.v + 1 : 1
     c.conn = Conn(opentrick(HTTP.WebSockets.open, url), v)
 
-    logmsg(c, DEBUG, "receiving HELLO"; conn=c.conn.v)
+    @log c Debug "receiving HELLO" conn=c.conn.v
     data, e = readjson(c.conn.io)
     e === nothing || throw(e)
     op = get(OPCODES, data["op"], data["op"])
@@ -78,10 +78,10 @@ function Base.open(c::Client; resume::Bool=false, delay::Period=Second(7))
     end
 
     op = resume ? :RESUME : :IDENTIFY
-    logmsg(c, DEBUG, "Writing $op"; conn=c.conn.v)
+    @log c Debug "Writing $op" conn=c.conn.v
     writejson(c.conn.io, data) === nothing || error("Writing $op failed")
 
-    logmsg(c, DEBUG, "Starting background maintenance tasks"; conn=c.conn.v)
+    @log c Debug "Starting background maintenance tasks" conn=c.conn.v
     @async heartbeat_loop(c)
     @async read_loop(c)
 
@@ -223,20 +223,20 @@ function heartbeat_loop(c::Client)
     v = c.conn.v
     try
         sleep(rand(1:round(Int, c.hb_interval / 1000)))
-        heartbeat(c) || logmsg(c, ERROR, "Writing HEARTBEAT failed"; conn=v)
+        heartbeat(c) || @log c Error "Writing HEARTBEAT failed" conn=v
 
         while c.conn.v == v && isopen(c)
             sleep(c.hb_interval / 1000)
             if c.last_hb > c.last_ack && isopen(c) && c.conn.v == v
-                logmsg(c, DEBUG, "Encountered zombie connection"; conn=v)
+                @log c Debug "Encountered zombie connection" conn=v
                 reconnect(c)
             elseif !heartbeat(c) && c.conn.v == v && isopen(c)
-                logmsg(c, ERROR, "Writing HEARTBEAT failed"; conn=v)
+                @log c Error "Writing HEARTBEAT failed" conn=v
             end
         end
-        logmsg(c, DEBUG, "Heartbeat loop exited"; conn=v)
+        @log c Debug "Heartbeat loop exited" conn=v
     catch e
-        logmsg(c, ERROR, "Heartbeat loop exited unexpectedly:\n$(catchmsg(e))"; conn=v)
+        @log c Error "Heartbeat loop exited unexpectedly:\n$(catchmsg(e))" conn=v
     end
 end
 
@@ -251,17 +251,17 @@ function read_loop(c::Client)
                 elseif c.conn.v == v
                     handle_read_error(c, e)
                 else
-                    logmsg(c, DEBUG, "Read failed, but the connection is outdated"; conn=v, e=e)
+                    @log c Debug "Read failed, but the connection is outdated" conn=v e=e
                 end
             elseif haskey(HANDLERS, data["op"])
                 HANDLERS[data["op"]](c, data)
             else
-                logmsg(c, WARN, "Unkown opcode"; op=data["op"])
+                @log c Warn "Unkown opcode" op=data["op"]
             end
         end
-        logmsg(c, DEBUG, "Read loop exited"; conn=v)
+        @log c Debug "Read loop exited" conn=v
     catch e
-        logmsg(c, ERROR, "Read loop exited unexpectedly:\n$(catchmsg(e))"; conn=v)
+        @log c Error "Read loop exited unexpectedly:\n$(catchmsg(e))" conn=v
     end
 end
 
@@ -292,7 +292,7 @@ function dispatch(c::Client, data::Dict)
         @async try
             handler.f(c, evt)
         catch e
-            logmsg(c, ERROR, catchmsg(e); event=T, handler=tag)
+            @log c Error catchmsg(e) event=T handler=tag
             push!(c.state.errors, evt)
         finally
             # TODO: There are race conditions here.
@@ -310,13 +310,13 @@ function heartbeat(c::Client, ::Dict=Dict())
 end
 
 function reconnect(c::Client, ::Dict=Dict(); resume::Bool=true)
-    logmsg(c, INFO, "Reconnecting"; resume=resume)
+    @log c Info "Reconnecting" resume=resume
     close(c; statuscode=resume ? 4000 : 1000)
     open(c; resume=resume)
 end
 
 function invalid_session(c::Client, data::Dict)
-    logmsg(c, WARN, "Received INVALID_SESSION"; resumable=data["d"])
+    @log c Warn "Received INVALID_SESSION" resumable=data["d"]
     sleep(rand(1:5))
     reconnect(c; resume=data["d"])
 end
@@ -339,9 +339,9 @@ const HANDLERS = Dict(
 
 const CLOSE_CODES = Dict(
     1000 => :NORMAL,
-    4000 => :UNKNOWN_ERROR,
+    4000 => :UNKNOWN_Error,
     4001 => :UNKNOWN_OPCODE,
-    4002 => :DECODE_ERROR,
+    4002 => :DECODE_Error,
     4003 => :NOT_AUTHENTICATED,
     4004 => :AUTHENTICATION_FAILED,
     4005 => :ALREADY_AUTHENTICATED,
@@ -353,30 +353,30 @@ const CLOSE_CODES = Dict(
 )
 
 function handle_read_error(c::Client, e::Exception)
-    logmsg(c, DEBUG, "Handling a $(typeof(e))"; e=e, conn=c.conn.v)
+    @log c Debug "Handling a $(typeof(e))" e=e conn=c.conn.v
     c.ready || return
     if e isa HTTP.WebSockets.WebSocketError
         handle_close(c, e.status)
     else
-        logmsg(c, ERROR, sprint(showerror, e))
+        @log c Error sprint(showerror, e)
         isopen(c) || reconnect(c)
     end
 end
 
 function handle_close(c::Client, status::Integer)
-    err = get(CLOSE_CODES, status, :UNKNOWN_ERROR)
+    err = get(CLOSE_CODES, status, :UNKNOWN_Error)
     if err === :NORMAL
         close(c)
-    elseif err === :UNKNOWN_ERROR
+    elseif err === :UNKNOWN_Error
         reconnect(c)
     elseif err === :UNKNOWN_OPCODE  # Probably a library bug.
         reconnect(c)
-    elseif err === :DECODE_ERROR  # Probably a library bug.
+    elseif err === :DECODE_Error  # Probably a library bug.
         reconnect(c)
     elseif err === :NOT_AUTHENTICATED  # Probably a library bug.
         reconnect(c)
     elseif err === :AUTHENTICATION_FAILED
-        logmsg(c, ERROR, "Authentication failed")
+        @log c Error "Authentication failed"
         close(c)
     elseif err === :ALREADY_AUTHENTICATED  # Probably a library bug.
         reconnect(c)
@@ -387,10 +387,10 @@ function handle_close(c::Client, status::Integer)
     elseif err === :SESSION_TIMEOUT
         reconnect(c)
     elseif err === :INVALID_SHARD
-        logmsg(c, ERROR, "Invalid shard")
+        @log c Error "Invalid shard"
         close(c)
     elseif err === :SHARDING_REQUIRED
-        logmsg(c, ERROR, "Sharding required")
+        @log c Error "Sharding required"
         close(c)
     end
 end

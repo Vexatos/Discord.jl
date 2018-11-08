@@ -3,21 +3,21 @@ const ENDS_MAJOR_ID_REGEX = r"(?:channels|guilds|webhooks)/\d+$"
 const ENDS_ID_REGEX = r"/\d+$"
 const EXCEPT_TRAILING_ID_REGEX = r"(.*?)/\d+$"
 
-mutable struct Bucket <: Threads.AbstractLock
+mutable struct Bucket <: AbstractLock
     remaining::Union{Int, Nothing}
     reset::Union{DateTime, Nothing}  # UTC.
-    sem::Base.Semaphore
+    sem::Semaphore
 
-    Bucket() = new(nothing, nothing, Base.Semaphore(1))
-    Bucket(remaining::Int, reset::DateTime) = new(remaining, reset, Base.Semaphore(1))
+    Bucket() = new(nothing, nothing, Semaphore(1))
+    Bucket(remaining::Int, reset::DateTime) = new(remaining, reset, Semaphore(1))
 end
 
 mutable struct Limiter
     reset::Union{DateTime, Nothing}  # API-wide limit.
     buckets::Dict{AbstractString, Bucket}
-    lock::Threads.AbstractLock
+    lock::AbstractLock
 
-    Limiter() = new(nothing, Dict(), Threads.SpinLock())
+    Limiter() = new(nothing, Dict(), SpinLock())
 end
 
 function Bucket(l::Limiter, method::Symbol, endpoint::AbstractString)
@@ -30,8 +30,8 @@ function Bucket(l::Limiter, method::Symbol, endpoint::AbstractString)
     end
 end
 
-Base.lock(b::Bucket) = Base.acquire(b.sem)
-Base.unlock(b::Bucket) = Base.release(b.sem)
+Base.lock(b::Bucket) = acquire(b.sem)
+Base.unlock(b::Bucket) = release(b.sem)
 
 function reset!(b::Bucket)
     b.remaining = nothing

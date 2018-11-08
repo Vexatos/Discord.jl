@@ -11,8 +11,8 @@ mutable struct State
     presences::Dict{Snowflake, TTL{Snowflake, Presence}}  # Guild ID -> user ID -> presence.
     members::Dict{Snowflake, TTL{Snowflake, Member}}      # Guild ID -> member ID -> member.
     errors::Vector{Union{Dict, AbstractEvent}}            # Values which caused errors.
-    lock::Threads.AbstractLock    # Internal lock.
-    ttls::TTLDict                 # TTLs for creating caches without a Client.
+    lock::AbstractLock  # Internal lock.
+    ttls::TTLDict       # TTLs for creating caches without a Client.
 end
 
 State(presence::NamedTuple, ttls::TTLDict) = State(Dict(pairs(presence)), ttls)
@@ -37,7 +37,7 @@ function State(presence::Dict, ttls::TTLDict)
         Dict(),                     # presences
         Dict(),                     # members
         [],                         # errors
-        Threads.SpinLock(),         # lock
+        SpinLock(),                 # lock
         ttls,                       # ttls
     )
 end

@@ -121,7 +121,7 @@ macro fielddoc(T)
         doc = string(@doc $T)
         docstring = doc * "\n# Fields\n\n```\n" * $docs * "\n```\n"
 
-        Base.CoreLogging.with_logger(Base.CoreLogging.NullLogger()) do
+        with_logger(NullLogger()) do
             @doc docstring $T
         end
     end

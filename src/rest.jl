@@ -198,7 +198,7 @@ function Response{T}(
                catch e
                     # If we're rate limited, then just go back to the top.
                     e == RATE_LIMITED && continue
-                    logmsg(c, ERROR, catchmsg(e))
+                    @log c Error catchmsg(e)
                     put!(f, Response{T}(nothing, false, http_r, e))
                 finally
                     unlock(b)

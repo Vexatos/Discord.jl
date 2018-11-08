@@ -3,11 +3,13 @@ module Defaults
 export handler_cached
 
 using Discord
-using Discord: INFO, locked, logmsg
+using Discord: locked, @log
+
+using Base.CoreLogging: Info
 using Setfield
 
 function handler(c::Client, e::Ready)
-    logmsg(c, INFO, "Logged in as $(e.user.username)")
+    @log c Info "Logged in as $(e.user.username)"
 
     c.state.v = e.v
     c.state.session_id = e.session_id
