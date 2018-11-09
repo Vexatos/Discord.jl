@@ -292,8 +292,9 @@ macro log(c, level, msg, kwargs...)
     quote
         shard = $(esc(c)).shard
         shards = $(esc(c)).shards
-        str = $(esc(msg))
-        shards > 1 && (str = "[Shard $shard/$shards] $str")
+        str = "[ $(now()) ] "
+        shards > 1 && (str *= "[ Shard $shard/$shards ] ")
+        str *= string($(esc(msg)))
         @logmsg $level str $(kwargs...) _file=string($(QuoteNode(file))) _line=$line
     end
 end
